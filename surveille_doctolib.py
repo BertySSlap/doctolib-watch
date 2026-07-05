@@ -90,9 +90,18 @@ def normalise(s):
 def formate_creneau(iso):
     try:
         d = datetime.fromisoformat(iso)
-        return f"{JOURS_FR[d.weekday()]} {d:%d/%m} à {d:%H:%M}"
+        if d.hour or d.minute:
+            return f"{JOURS_FR[d.weekday()]} {d:%d/%m/%Y} à {d:%H:%M}"
+        return f"{JOURS_FR[d.weekday()]} {d:%d/%m/%Y}"
     except ValueError:
         return iso
+
+
+def date_de(iso):
+    try:
+        return datetime.fromisoformat(iso).date()
+    except (ValueError, TypeError):
+        return None
 
 
 def slug_depuis_url(url):
@@ -285,6 +294,15 @@ def traite_praticien(client, praticien, etat_p, topic, jours):
         limite = date.fromisoformat(avant_le)
         creneaux = [c for c in creneaux
                     if datetime.fromisoformat(c).date() < limite]
+        if next_slot and (date_de(next_slot) is None
+                          or date_de(next_slot) >= limite):
+            next_slot = None
+
+    # meilleur créneau connu, dans OU au-delà de la fenêtre de 15 jours
+    # (15 = plafond de l'API) — c'est lui qui permet d'avancer un RDV lointain
+    candidats = [c for c in creneaux[:1] + ([next_slot] if next_slot else [])
+                 if date_de(c)]
+    meilleur = min(candidats, key=date_de) if candidats else None
 
     vus = etat_p.setdefault("vus", {})
 
@@ -304,12 +322,12 @@ def traite_praticien(client, praticien, etat_p, topic, jours):
     if not etat_p.get("init"):
         # première passe : on prend l'existant comme référence, sans alerter
         etat_p["init"] = True
-        etat_p["next_slot"] = next_slot
+        etat_p["meilleur"] = meilleur
         detail = (f"{len(creneaux)} créneau(x) actuellement visibles "
                   f"(1er : {formate_creneau(creneaux[0])})" if creneaux
-                  else "aucun créneau visible pour l'instant")
-        if next_slot and not creneaux:
-            detail += f" — prochain créneau connu : {formate_creneau(next_slot)}"
+                  else "aucun créneau visible sous 15 jours")
+        if meilleur and not creneaux:
+            detail += f" — prochain créneau connu : {formate_creneau(meilleur)}"
         notifie(topic, f"Veille activée : {nom}",
                 detail + "\nTu seras alerté(e) dès qu'un nouveau créneau apparaît.",
                 priorite=2, tags=["white_check_mark"], url_clic=url)
@@ -330,22 +348,25 @@ def traite_praticien(client, praticien, etat_p, topic, jours):
     else:
         log(f"{nom} : rien de neuf ({len(creneaux)} créneaux connus)")
 
-    # si rien dans la fenêtre : suivre next_slot et alerter s'il avance
-    if not creneaux and next_slot:
-        precedent = etat_p.get("next_slot")
-        if precedent:
-            try:
-                if (datetime.fromisoformat(next_slot).date()
-                        < datetime.fromisoformat(precedent).date()):
-                    notifie(topic, f"RDV plus tôt : {nom}",
-                            f"Le prochain créneau connu est avancé au "
-                            f"{formate_creneau(next_slot)} "
-                            f"(avant : {formate_creneau(precedent)}).",
-                            priorite=4, url_clic=url)
-                    log(f"{nom} : next_slot avancé {precedent} -> {next_slot}")
-            except ValueError:
-                pass
-        etat_p["next_slot"] = next_slot
+    # suivi permanent du meilleur créneau connu : alerte dès qu'il AVANCE
+    # (désistement au-delà de la fenêtre de 15 jours compris)
+    ref = etat_p.get("meilleur") or etat_p.pop("next_slot", None)  # migration
+    etat_p.pop("next_slot", None)
+    if meilleur:
+        if (ref and date_de(ref) and date_de(meilleur) < date_de(ref)
+                and not nouveaux):
+            # (si "nouveaux" a déjà alerté cette passe, inutile de doubler)
+            notifie(topic, f"RDV plus tôt : {nom}",
+                    f"Le meilleur créneau connu est avancé au "
+                    f"{formate_creneau(meilleur)} "
+                    f"(avant : {formate_creneau(ref)}).",
+                    priorite=4, url_clic=url)
+            log(f"{nom} : meilleur créneau avancé {ref} -> {meilleur}")
+        elif not ref:
+            log(f"{nom} : meilleur créneau initialisé -> {meilleur}")
+        # s'il recule (créneau pris), on suit silencieusement : la prochaine
+        # amélioration sera comparée à la nouvelle réalité
+        etat_p["meilleur"] = meilleur
 
 
 def main():
