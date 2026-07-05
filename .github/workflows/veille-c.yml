@@ -1,0 +1,15 @@
+# Troisième déclencheur échelonné — voir veille-b.yml.
+name: veille-c
+on:
+  schedule:
+    - cron: "6-59/10 * * * *"
+permissions:
+  contents: write
+concurrency:
+  group: veille
+jobs:
+  veille:
+    uses: ./.github/workflows/veille.yml
+    secrets: inherit
+    permissions:
+      contents: write

@@ -1,0 +1,18 @@
+# Déclencheur supplémentaire : le cron d'un workflow GitHub ne part en
+# pratique que toutes les 3 à 5 h (throttling) — plusieurs workflows
+# échelonnés multiplient les départs. Même groupe de concurrence que
+# "veille", donc jamais deux veilles en parallèle.
+name: veille-b
+on:
+  schedule:
+    - cron: "3-59/10 * * * *"
+permissions:
+  contents: write
+concurrency:
+  group: veille
+jobs:
+  veille:
+    uses: ./.github/workflows/veille.yml
+    secrets: inherit
+    permissions:
+      contents: write

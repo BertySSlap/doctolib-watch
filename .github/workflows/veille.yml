@@ -3,6 +3,7 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: write
 concurrency:
@@ -10,7 +11,7 @@ concurrency:
 jobs:
   veille:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Cookies de la passe precedente
@@ -19,27 +20,28 @@ jobs:
           path: cookies.lwp
           key: cookies-${{ github.run_id }}
           restore-keys: cookies-
-      - name: Config depuis le secret
-        env:
-          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
-        run: printf '%s' "$CONFIG_JSON" > config.json
-      - name: Veille
+      - name: Veille en boucle (~50 min, une passe toutes les ~10 min)
         env:
           VEILLE_CLOUD: "1"
-        run: python3 surveille_doctolib.py
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: |
+          git config user.name "veille-bot"
+          git config user.email "veille-bot@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs -q || git rebase --abort || true
+            printf '%s' "$CONFIG_JSON" > config.json
+            python3 surveille_doctolib.py || true
+            if [ -n "$(git status --porcelain -- etat.json)" ]; then
+              git add etat.json
+              git commit -q -m "etat [skip ci]"
+              git push -q || { git pull --rebase -X theirs -q || git rebase --abort || true; git push -q || true; }
+            fi
+            [ "$i" -lt 5 ] && sleep 560
+          done
+          rm -f config.json veille.log
       - name: Sauvegarde des cookies
         if: always()
         uses: actions/cache/save@v4
         with:
           path: cookies.lwp
           key: cookies-${{ github.run_id }}
-      - name: Sauvegarde de l'etat
-        run: |
-          rm -f config.json cookies.lwp veille.log
-          if [ -n "$(git status --porcelain -- etat.json)" ]; then
-            git config user.name "veille-bot"
-            git config user.email "veille-bot@users.noreply.github.com"
-            git add etat.json
-            git commit -m "etat [skip ci]"
-            git push || echo "collision de push, etat repris a la prochaine passe"
-          fi
