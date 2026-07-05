@@ -6,22 +6,52 @@ import gzip
 import urllib.request
 import urllib.parse
 import urllib.error
+import http.cookiejar
 import datetime
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-HEADERS = {"User-Agent": UA, "Accept": "application/json",
-           "Accept-Language": "fr-FR,fr;q=0.9",
-           "Referer": "https://www.doctolib.fr/"}
+
+CJ = http.cookiejar.CookieJar()
+OP = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CJ))
+
+COMMUNS = {
+    "User-Agent": UA,
+    "Accept-Language": "fr-FR,fr;q=0.9",
+    "sec-ch-ua": '"Not/A)Brand";v="8", "Chromium";v="126", '
+                 '"Google Chrome";v="126"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+}
 
 
-def get_json(url):
-    req = urllib.request.Request(url, headers=HEADERS)
-    r = urllib.request.urlopen(req, timeout=30)
+def _open(url, headers):
+    req = urllib.request.Request(url, headers={**COMMUNS, **headers})
+    r = OP.open(req, timeout=30)
     body = r.read()
     if r.headers.get("Content-Encoding") == "gzip":
         body = gzip.decompress(body)
-    return r.status, json.loads(body)
+    return r.status, body
+
+
+def get_html(url):
+    return _open(url, {
+        "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
+                   "image/avif,image/webp,*/*;q=0.8"),
+        "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+    })
+
+
+def get_json(url, referer="https://www.doctolib.fr/"):
+    st, body = _open(url, {
+        "Accept": "application/json", "Referer": referer,
+        "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+    return st, json.loads(body)
 
 
 def main():
@@ -36,11 +66,17 @@ def main():
     ok = False
     for p in profils[:10]:
         slug = p["link"].rstrip("/").rsplit("/", 1)[-1]
+        page = "https://www.doctolib.fr" + p["link"]
+        try:
+            st, _ = get_html(page)
+            print("page html:", st)
+        except urllib.error.HTTPError as e:
+            print("page html: HTTP", e.code)
         try:
             st, d = get_json(
                 "https://www.doctolib.fr/online_booking/api/"
                 "slot_selection_funnel/v1/info.json?profile_slug="
-                + urllib.parse.quote(slug) + "&locale=fr")
+                + urllib.parse.quote(slug) + "&locale=fr", referer=page)
         except urllib.error.HTTPError as e:
             print("info: HTTP", e.code, "(profil suivant)")
             continue
@@ -61,7 +97,13 @@ def main():
                                              if a.get("practice_id")})),
             "limit": "14",
         })
-        st, av = get_json("https://www.doctolib.fr/availabilities.json?" + q)
+        try:
+            st, av = get_json(
+                "https://www.doctolib.fr/availabilities.json?" + q,
+                referer=page)
+        except urllib.error.HTTPError as e:
+            print("availabilities: HTTP", e.code, "(profil suivant)")
+            continue
         print("availabilities:", st, "| total:", av.get("total"))
         ok = True
         break
