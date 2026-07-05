@@ -392,6 +392,12 @@ def main():
             etat_p["echecs"] = 0
             etat_p["panne_notifiee"] = False
         except Exception as e:  # un praticien en échec ne bloque pas les autres
+            if (CLOUD and isinstance(e, urllib.error.HTTPError)
+                    and e.code == 403):
+                # loterie d'IP datacenter : bruit attendu, pas une panne —
+                # les passes locales (PC allumé) détectent les vraies casses
+                log(f"{nom} : IP GitHub refusée (403), prochaine passe")
+                continue
             etat_p["echecs"] = etat_p.get("echecs", 0) + 1
             log(f"ECHEC {nom} ({etat_p['echecs']}x) : {type(e).__name__}: {e}")
             if (etat_p["echecs"] >= SEUIL_PANNE
