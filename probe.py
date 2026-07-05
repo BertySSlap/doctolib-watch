@@ -25,15 +25,16 @@ def get_json(url):
 
 
 def main():
-    st, d = get_json("https://www.doctolib.fr/api/searchbar/autocomplete.json"
-                     "?search=medecin+generaliste")
-    print("autocomplete:", st)
-    profils = [p for p in d.get("profiles", [])
-               if p.get("owner_type") != "Organization" and p.get("link")]
-    if not profils:
-        profils = [p for p in d.get("profiles", []) if p.get("link")]
+    profils = []
+    for recherche in ("martin", "dupont", "bernard"):
+        st, d = get_json("https://www.doctolib.fr/api/searchbar/"
+                         "autocomplete.json?search=" + recherche)
+        print("autocomplete:", st)
+        profils += [p for p in d.get("profiles", [])
+                    if p.get("owner_type") != "Organization" and p.get("link")]
+    print("candidats:", len(profils))
     ok = False
-    for p in profils[:5]:
+    for p in profils[:10]:
         slug = p["link"].rstrip("/").rsplit("/", 1)[-1]
         try:
             st, d = get_json(
