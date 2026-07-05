@@ -62,7 +62,7 @@ def log(msg):
         for s, r in MASQUES:
             msg = msg.replace(s, r)
     ligne = f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}"
-    if VERBOSE:
+    if VERBOSE and sys.stdout:   # sys.stdout est None sous pythonw
         try:
             print(ligne, flush=True)
         except UnicodeEncodeError:

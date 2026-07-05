@@ -13,6 +13,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Cookies de la passe precedente
+        uses: actions/cache/restore@v4
+        with:
+          path: cookies.lwp
+          key: cookies-${{ github.run_id }}
+          restore-keys: cookies-
       - name: Config depuis le secret
         env:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
@@ -21,6 +27,12 @@ jobs:
         env:
           VEILLE_CLOUD: "1"
         run: python3 surveille_doctolib.py
+      - name: Sauvegarde des cookies
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cookies.lwp
+          key: cookies-${{ github.run_id }}
       - name: Sauvegarde de l'etat
         run: |
           rm -f config.json cookies.lwp veille.log
@@ -29,5 +41,5 @@ jobs:
             git config user.email "veille-bot@users.noreply.github.com"
             git add etat.json
             git commit -m "etat [skip ci]"
-            git push
+            git push || echo "collision de push, etat repris a la prochaine passe"
           fi
