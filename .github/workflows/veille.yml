@@ -1,0 +1,33 @@
+name: veille
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: veille
+jobs:
+  veille:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Config depuis le secret
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: printf '%s' "$CONFIG_JSON" > config.json
+      - name: Veille
+        env:
+          VEILLE_CLOUD: "1"
+        run: python3 surveille_doctolib.py
+      - name: Sauvegarde de l'etat
+        run: |
+          rm -f config.json cookies.lwp veille.log
+          if [ -n "$(git status --porcelain -- etat.json)" ]; then
+            git config user.name "veille-bot"
+            git config user.email "veille-bot@users.noreply.github.com"
+            git add etat.json
+            git commit -m "etat [skip ci]"
+            git push
+          fi
