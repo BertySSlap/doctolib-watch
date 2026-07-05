@@ -350,7 +350,7 @@ def traite_praticien(client, praticien, etat_p, topic, jours):
 
 def main():
     try:
-        with open(FICHIER_CONFIG, encoding="utf-8") as f:
+        with open(FICHIER_CONFIG, encoding="utf-8-sig") as f:
             cfg = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         log(f"ERREUR config.json illisible : {e}")
