@@ -1,15 +1,48 @@
-# Troisième déclencheur échelonné — voir veille-b.yml.
 name: veille-c
 on:
   schedule:
     - cron: "6-59/10 * * * *"
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
   group: veille
 jobs:
   veille:
-    uses: ./.github/workflows/veille.yml
-    secrets: inherit
-    permissions:
-      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cookies de la passe precedente
+        uses: actions/cache/restore@v4
+        with:
+          path: cookies.lwp
+          key: cookies-${{ github.run_id }}
+          restore-keys: cookies-
+      - name: Veille en boucle (~5 h 45, une passe toutes les ~10 min)
+        env:
+          VEILLE_CLOUD: "1"
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: |
+          git config user.name "veille-bot"
+          git config user.email "veille-bot@users.noreply.github.com"
+          fin=$((SECONDS + 20700))
+          while :; do
+            git pull --rebase -X theirs -q || git rebase --abort || true
+            printf '%s' "$CONFIG_JSON" > config.json
+            python3 surveille_doctolib.py || true
+            if [ -n "$(git status --porcelain -- etat.json)" ]; then
+              git add etat.json
+              git commit -q -m "etat [skip ci]"
+              git push -q || { git pull --rebase -X theirs -q || git rebase --abort || true; git push -q || true; }
+            fi
+            [ $SECONDS -ge $fin ] && break
+            sleep 560
+          done
+          rm -f config.json veille.log
+      - name: Sauvegarde des cookies
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cookies.lwp
+          key: cookies-${{ github.run_id }}
