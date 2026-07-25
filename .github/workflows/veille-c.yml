@@ -1,48 +1,48 @@
 name: veille-c
 on:
-  schedule:
-    - cron: "6-59/10 * * * *"
-  workflow_dispatch:
+schedule:
+- cron: "6-59/10 * * * *"
+workflow_dispatch:
 permissions:
-  contents: write
+contents: write
 concurrency:
-  group: veille
-  cancel-in-progress: false
+group: veille
+cancel-in-progress: false
 jobs:
-  veille:
-    runs-on: ubuntu-latest
-    timeout-minutes: 9
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cookies de la passe precedente
-        uses: actions/cache/restore@v4
-        with:
-          path: cookies.lwp
-          key: cookies-${{ github.run_id }}
-          restore-keys: cookies-
-      - name: Une passe de veille
-        env:
-          VEILLE_CLOUD: "1"
-          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
-        run: |
-          set -e
-          trap 'rm -f config.json veille.log' EXIT
-          git config user.name "veille-bot"
-          git config user.email "veille-bot@users.noreply.github.com"
-          git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
-          printf '%s' "$CONFIG_JSON" > config.json
-          python3 surveille_doctolib.py
-          if [ -n "$(git status --porcelain -- etat.json)" ]; then
-            git add etat.json
-            git commit -q -m "etat [skip ci]"
-            git push -q || {
-              git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
-              git push -q
-            }
-          fi
-      - name: Sauvegarde des cookies
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: cookies.lwp
-          key: cookies-${{ github.run_id }}
+veille:
+runs-on: ubuntu-latest
+timeout-minutes: 9
+steps:
+- uses: actions/checkout@v4
+- name: Cookies de la passe precedente
+uses: actions/cache/restore@v4
+with:
+path: cookies.lwp
+key: cookies-${{ github.run_id }}
+restore-keys: cookies-
+- name: Une passe de veille
+env:
+VEILLE_CLOUD: "1"
+CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+run: |
+set -e
+trap 'rm -f config.json veille.log' EXIT
+git config user.name "veille-bot"
+git config user.email "veille-bot@users.noreply.github.com"
+git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
+printf '%s' "$CONFIG_JSON" > config.json
+python3 surveille_doctolib.py
+if [ -n "$(git status --porcelain -- etat.json)" ]; then
+git add etat.json
+git commit -q -m "etat [skip ci]"
+git push -q || {
+git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
+git push -q
+}
+fi
+- name: Sauvegarde des cookies
+if: always()
+uses: actions/cache/save@v4
+with:
+path: cookies.lwp
+key: cookies-${{ github.run_id }}
