@@ -7,10 +7,11 @@ permissions:
   contents: write
 concurrency:
   group: veille
+  cancel-in-progress: false
 jobs:
   veille:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - name: Cookies de la passe precedente
@@ -19,27 +20,26 @@ jobs:
           path: cookies.lwp
           key: cookies-${{ github.run_id }}
           restore-keys: cookies-
-      - name: Veille en boucle (~5 h 45, une passe toutes les ~10 min)
+      - name: Une passe de veille
         env:
           VEILLE_CLOUD: "1"
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
         run: |
+          set -e
+          trap 'rm -f config.json veille.log' EXIT
           git config user.name "veille-bot"
           git config user.email "veille-bot@users.noreply.github.com"
-          fin=$((SECONDS + 20700))
-          while :; do
-            git pull --rebase -X theirs -q || git rebase --abort || true
-            printf '%s' "$CONFIG_JSON" > config.json
-            python3 surveille_doctolib.py || true
-            if [ -n "$(git status --porcelain -- etat.json)" ]; then
-              git add etat.json
-              git commit -q -m "etat [skip ci]"
-              git push -q || { git pull --rebase -X theirs -q || git rebase --abort || true; git push -q || true; }
-            fi
-            [ $SECONDS -ge $fin ] && break
-            sleep 560
-          done
-          rm -f config.json veille.log
+          git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
+          printf '%s' "$CONFIG_JSON" > config.json
+          python3 surveille_doctolib.py
+          if [ -n "$(git status --porcelain -- etat.json)" ]; then
+            git add etat.json
+            git commit -q -m "etat [skip ci]"
+            git push -q || {
+              git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
+              git push -q
+            }
+          fi
       - name: Sauvegarde des cookies
         if: always()
         uses: actions/cache/save@v4
