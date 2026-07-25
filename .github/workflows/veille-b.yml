@@ -31,7 +31,8 @@ jobs:
           git config user.email "veille-bot@users.noreply.github.com"
           git pull --rebase -X theirs -q || { git rebase --abort || true; exit 1; }
           printf '%s' "$CONFIG_JSON" > config.json
-          python3 surveille_doctolib.py
+          statut=0
+          python3 surveille_doctolib.py || statut=$?
           if [ -n "$(git status --porcelain -- etat.json)" ]; then
             git add etat.json
             git commit -q -m "etat [skip ci]"
@@ -40,6 +41,7 @@ jobs:
               git push -q
             }
           fi
+          exit "$statut"
       - name: Sauvegarde des cookies
         if: always()
         uses: actions/cache/save@v4
