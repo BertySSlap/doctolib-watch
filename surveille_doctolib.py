@@ -48,6 +48,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 TTL_INFO_CACHE = 24 * 3600          # re-résolution des IDs motif/agenda : 1x/jour
 SEUIL_PANNE = 30                    # échecs consécutifs avant alerte (≈5 h à 10 min)
+SEUIL_PANNE_CLOUD = 3               # alerte rapide si GitHub est bloqué par Doctolib
 JOURS_FR = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
 
 CLOUD = bool(os.environ.get("VEILLE_CLOUD"))
@@ -404,6 +405,7 @@ def main():
     if not actifs:
         log("aucun praticien actif dans config.json")
 
+    echecs_execution = 0
     for praticien in actifs:
         cle = cle_etat(slug_depuis_url(praticien["url"]), topic)
         etat_p = etats_p.setdefault(cle, {})
@@ -413,15 +415,11 @@ def main():
             etat_p["echecs"] = 0
             etat_p["panne_notifiee"] = False
         except Exception as e:  # un praticien en échec ne bloque pas les autres
-            if (CLOUD and isinstance(e, urllib.error.HTTPError)
-                    and e.code == 403):
-                # loterie d'IP datacenter : bruit attendu, pas une panne —
-                # les passes locales (PC allumé) détectent les vraies casses
-                log(f"{nom} : IP GitHub refusée (403), prochaine passe")
-                continue
+            echecs_execution += 1
             etat_p["echecs"] = etat_p.get("echecs", 0) + 1
             log(f"ECHEC {nom} ({etat_p['echecs']}x) : {type(e).__name__}: {e}")
-            if (etat_p["echecs"] >= SEUIL_PANNE
+            seuil_panne = SEUIL_PANNE_CLOUD if CLOUD else SEUIL_PANNE
+            if (etat_p["echecs"] >= seuil_panne
                     and not etat_p.get("panne_notifiee")):
                 etat_p["panne_notifiee"] = True
                 try:
@@ -451,7 +449,9 @@ def main():
             json.dump(etat, f, ensure_ascii=False, indent=1)
     except OSError as e:
         log(f"ERREUR écriture etat.json : {e}")
-    return 0
+    # Ne jamais afficher une exécution verte quand aucun praticien n'a pu
+    # être contrôlé. GitHub Actions doit rendre la panne visible.
+    return 1 if actifs and echecs_execution == len(actifs) else 0
 
 
 if __name__ == "__main__":
