@@ -30,6 +30,7 @@ import os
 import sys
 import time
 import gzip
+import http.cookies
 import unicodedata
 import urllib.request
 import urllib.parse
@@ -44,6 +45,7 @@ FICHIER_LOG = os.path.join(DOSSIER, "veille.log")
 FICHIER_COOKIES = os.path.join(DOSSIER, "cookies.lwp")
 
 NTFY_URL = "https://ntfy.sh/"
+SCRAPINGBEE_URL = "https://app.scrapingbee.com/api/v1/"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 TTL_INFO_CACHE = 24 * 3600          # re-résolution des IDs motif/agenda : 1x/jour
@@ -131,6 +133,15 @@ EN_TETES_COMMUNS = {
 
 class Client:
     def __init__(self):
+        self.scrapingbee_key = os.environ.get(
+            "SCRAPINGBEE_API_KEY", "").strip()
+        # Une session quotidienne : même IP pendant la séquence
+        # page -> info -> disponibilités, puis rotation régulière.
+        graine = hashlib.sha256(
+            f"doctolib-{date.today():%Y%m%d}".encode()).hexdigest()
+        self.session_id = int(graine[:8], 16) % 10_000_001
+        self.cookies_distants = {}
+        self.echauffe_scrapingbee = False
         self.cj = http.cookiejar.LWPCookieJar(FICHIER_COOKIES)
         try:
             if os.path.exists(FICHIER_COOKIES):
@@ -141,6 +152,40 @@ class Client:
             urllib.request.HTTPCookieProcessor(self.cj))
 
     def _open(self, url, en_tetes):
+        if self.scrapingbee_key:
+            # ScrapingBee exécute la requête depuis une IP résidentielle
+            # française. Les en-têtes Doctolib sont préfixés par Spb- afin
+            # qu'ils soient transmis à la cible, pas à l'API intermédiaire.
+            params = urllib.parse.urlencode({
+                "url": url,
+                "render_js": "false",
+                "premium_proxy": "true",
+                "country_code": "fr",
+                "session_id": str(self.session_id),
+                "forward_headers": "true",
+                "transparent_status_code": "true",
+            })
+            cibles = {**EN_TETES_COMMUNS, **en_tetes}
+            if self.cookies_distants:
+                cibles["Cookie"] = "; ".join(
+                    f"{k}={v}" for k, v in self.cookies_distants.items())
+            api_headers = {
+                "Authorization": f"Bearer {self.scrapingbee_key}",
+                **{f"Spb-{k}": v for k, v in cibles.items()},
+            }
+            req = urllib.request.Request(
+                SCRAPINGBEE_URL + "?" + params, headers=api_headers)
+            r = urllib.request.urlopen(req, timeout=45)
+            body = r.read()
+            for valeur in r.headers.get_all("Spb-Set-Cookie") or []:
+                biscuit = http.cookies.SimpleCookie()
+                biscuit.load(valeur)
+                for nom, morceau in biscuit.items():
+                    self.cookies_distants[nom] = morceau.value
+            if r.headers.get("Content-Encoding") == "gzip":
+                body = gzip.decompress(body)
+            return body
+
         req = urllib.request.Request(
             url, headers={**EN_TETES_COMMUNS, **en_tetes})
         r = self.op.open(req, timeout=30)
@@ -151,6 +196,10 @@ class Client:
 
     def visite_page(self, url):
         """Échauffement anti-403 : cookies Cloudflare de la page praticien."""
+        # Avec ScrapingBee, un seul échauffement par passe suffit : les
+        # cookies concernent le domaine doctolib.fr et la session garde l'IP.
+        if self.scrapingbee_key and self.echauffe_scrapingbee:
+            return
         self._open(url, {
             "Accept": ("text/html,application/xhtml+xml,application/xml;"
                        "q=0.9,image/avif,image/webp,*/*;q=0.8"),
@@ -158,6 +207,8 @@ class Client:
             "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1",
             "Upgrade-Insecure-Requests": "1",
         })
+        if self.scrapingbee_key:
+            self.echauffe_scrapingbee = True
 
     def get_json(self, url, referer):
         body = self._open(url, {
@@ -169,6 +220,8 @@ class Client:
         return json.loads(body)
 
     def sauve_cookies(self):
+        if self.scrapingbee_key:
+            return
         try:
             self.cj.save(ignore_discard=True)
         except OSError:
@@ -401,6 +454,11 @@ def main():
     etats_p = etat.setdefault("praticiens", {})
 
     client = Client()
+    if client.scrapingbee_key:
+        log("accès Doctolib via IP résidentielle française activé")
+    elif CLOUD:
+        log("ERREUR : secret SCRAPINGBEE_API_KEY absent ; "
+            "les IP GitHub seront probablement refusées")
     actifs = [p for p in cfg.get("praticiens", []) if p.get("actif", True)]
     if not actifs:
         log("aucun praticien actif dans config.json")
