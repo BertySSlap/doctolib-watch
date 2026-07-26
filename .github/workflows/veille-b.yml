@@ -1,7 +1,5 @@
 name: veille-b
 on:
-  schedule:
-    - cron: "3-59/10 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,6 +22,7 @@ jobs:
         env:
           VEILLE_CLOUD: "1"
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
         run: |
           set -e
           trap 'rm -f config.json veille.log' EXIT
