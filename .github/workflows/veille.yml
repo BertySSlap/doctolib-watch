@@ -1,7 +1,7 @@
 name: veille
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3,33 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
