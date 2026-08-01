@@ -1,5 +1,7 @@
 name: veille-b
 on:
+  schedule:
+    - cron: "13,43 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
