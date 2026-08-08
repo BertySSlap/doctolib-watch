@@ -1,7 +1,5 @@
 name: veille
 on:
-  schedule:
-    - cron: "3 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
