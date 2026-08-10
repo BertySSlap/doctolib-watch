@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+cd "$HOME/doctolib-watch" || exit 1
+python surveille_maiia.py stop
+pkill -f '[r]un_maiia.sh' 2>/dev/null || true
+echo "Robot Maiia arrêté."

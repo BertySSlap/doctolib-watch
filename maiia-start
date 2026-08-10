@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/sh
+cd "$HOME/doctolib-watch" || exit 1
+pkill -f '[r]un_maiia.sh' 2>/dev/null || true
+python surveille_maiia.py start || exit 1
+nohup sh ./run_maiia.sh >> maiia_service.log 2>&1 &
+echo "Robot Maiia démarré."
