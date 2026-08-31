@@ -1,14 +1,14 @@
 {
  "praticiens": {
   "4d1301b683c6": {
-   "echecs": 2,
+   "echecs": 3,
    "vus": {},
    "init": true,
-   "panne_notifiee": false,
+   "panne_notifiee": true,
    "meilleur": "2027-05-24T16:40:00.000+02:00"
   },
   "32b998d0812d": {
-   "echecs": 5,
+   "echecs": 6,
    "vus": {},
    "init": true,
    "panne_notifiee": true,
