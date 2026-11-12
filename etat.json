@@ -1,7 +1,7 @@
 {
  "praticiens": {
   "4d1301b683c6": {
-   "echecs": 2,
+   "echecs": 3,
    "vus": {
     "2026-11-12T09:30:00.000+01:00": 1794433930,
     "2026-11-12T11:30:00.000+01:00": 1794433930,
@@ -22,14 +22,14 @@
     "2026-11-26T17:00:00.000+01:00": 1794451135
    },
    "init": true,
-   "panne_notifiee": false,
+   "panne_notifiee": true,
    "meilleur": "2026-11-12T09:30:00.000+01:00"
   },
   "32b998d0812d": {
-   "echecs": 2,
+   "echecs": 3,
    "vus": {},
    "init": true,
-   "panne_notifiee": false,
+   "panne_notifiee": true,
    "meilleur": "2027-06-09T10:00:00.000+02:00"
   }
  },
